@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Raw Response Test</title>
+</head>
+
+<body>
+    <h1>Testing Raw API Response</h1>
+    <button onclick="testCreatePost()">Test Create Post</button>
+    <button onclick="testGetPosts()">Test Get Posts</button>
+
+    <h2>Response:</h2>
+    <pre id="response"></pre>
+
+    <h2>Response Details:</h2>
+    <pre id="details"></pre>
+
+    <script>
+        async function testCreatePost() {
+            try {
+                const response = await fetch('/Campusbuzz/backend/posts.php?action=create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        content: 'Test post from diagnostic ' + Date.now(),
+                        image_url: null
+                    })
+                });
+
+                const text = await response.text();
+
+                document.getElementById('response').textContent = text;
+
+                // Show details
+                let details = `Status: ${response.status}\n`;
+                details += `Content-Type: ${response.headers.get('content-type')}\n`;
+                details += `Text Length: ${text.length}\n`;
+                details += `First 100 chars: ${text.substring(0, 100)}\n`;
+                details += `Last 100 chars: ${text.substring(text.length - 100)}\n\n`;
+
+                // Show hex of first 50 bytes
+                details += 'First 50 bytes (hex):\n';
+                for (let i = 0; i < Math.min(50, text.length); i++) {
+                    details += text.charCodeAt(i).toString(16).padStart(2, '0') + ' ';
+                    if ((i + 1) % 16 === 0) details += '\n';
+                }
+                details += '\n\n';
+
+                // Try to parse JSON
+                try {
+                    const json = JSON.parse(text);
+                    details += 'JSON Parse: SUCCESS\n';
+                    details += JSON.stringify(json, null, 2);
+                } catch (e) {
+                    details += 'JSON Parse: FAILED\n';
+                    details += 'Error: ' + e.message + '\n';
+                    details += 'Error at position: ' + e.message.match(/position (\\d+)/)?.[1];
+                }
+
+                document.getElementById('details').textContent = details;
+
+            } catch (error) {
+                document.getElementById('response').textContent = 'Error: ' + error.message;
+            }
+        }
+
+        async function testGetPosts() {
+            try {
+                const response = await fetch('/Campusbuzz/backend/posts.php?action=list', {
+                    credentials: 'include'
+                });
+
+                const text = await response.text();
+                document.getElementById('response').textContent = text;
+
+                let details = `Status: ${response.status}\n`;
+                details += `Text Length: ${text.length}\n`;
+
+                try {
+                    const json = JSON.parse(text);
+                    details += 'JSON Parse: SUCCESS\n';
+                    details += `Posts count: ${json.posts?.length || 0}`;
+                } catch (e) {
+                    details += 'JSON Parse: FAILED\n';
+                    details += 'Error: ' + e.message;
+                }
+
+                document.getElementById('details').textContent = details;
+
+            } catch (error) {
+                document.getElementById('response').textContent = 'Error: ' + error.message;
+            }
+        }
+    </script>
+</body>
+
+</html>

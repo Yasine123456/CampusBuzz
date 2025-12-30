@@ -1,0 +1,21 @@
+# Apache Configuration for CampusBuzz API
+# Simplified version compatible with NUWebSpace
+
+# Prevent directory listing
+Options -Indexes
+
+# Protect sensitive files (files starting with .)
+<FilesMatch "^\\.">
+    Require all denied
+</FilesMatch>
+
+# Set default charset
+AddDefaultCharset UTF-8
+
+# Enable compression (if mod_deflate is available)
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>
+
+# Note: CORS headers are handled in PHP files (db_connection.php)
+# This avoids requiring mod_headers which may not be enabled
