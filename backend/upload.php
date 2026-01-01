@@ -2,7 +2,7 @@
 // upload.php - File upload handler for post images
 
 require_once 'db_connection.php';
-require_once 'auth.php';
+require_once 'auth_helpers.php';
 
 header('Content-Type: application/json');
 
@@ -58,8 +58,9 @@ $filepath = $uploadDir . $filename;
 // Move uploaded file
 if (move_uploaded_file($file['tmp_name'], $filepath)) {
     // Return the URL to the uploaded file
-    $imageUrl = '/backend/uploads/' . $filename;
-    
+    // Use absolute path from root for NUWebSpace
+    $imageUrl = '/Campusbuzz/backend/uploads/' . $filename;
+
     http_response_code(200);
     echo json_encode([
         'success' => true,

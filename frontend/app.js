@@ -37,6 +37,14 @@ const showLoginLink = document.getElementById('showLoginLink');
 const loginError = document.getElementById('loginError');
 const registerError = document.getElementById('registerError');
 
+// Notifications elements
+const notificationsBtn = document.getElementById('notificationsBtn');
+const notificationsModal = document.getElementById('notificationsModal');
+const notificationsList = document.getElementById('notificationsList');
+const notificationBadge = document.getElementById('notificationBadge');
+const markAllReadBtn = document.getElementById('markAllReadBtn');
+const notificationsLoading = document.getElementById('notificationsLoading');
+
 // ============================================
 // INITIALIZATION
 // ============================================
@@ -54,6 +62,7 @@ async function initializeApp() {
         showAuthenticatedUI();
         loadPosts();
         startPolling();
+        startNotificationsPolling();
     } else {
         showAuthModal();
     }
@@ -92,10 +101,31 @@ function setupEventListeners() {
     imageInput.addEventListener('change', handleImageSelect);
     removeImageBtn.addEventListener('click', removeImage);
 
+    // Ghost mode toggle
+    const ghostModeToggle = document.getElementById('ghostModeToggle');
+    const expirationTime = document.getElementById('expirationTime');
+    ghostModeToggle.addEventListener('change', () => {
+        if (ghostModeToggle.checked) {
+            expirationTime.classList.remove('hidden');
+        } else {
+            expirationTime.classList.add('hidden');
+        }
+    });
+
+    // Notifications
+    notificationsBtn.addEventListener('click', showNotificationsModal);
+    markAllReadBtn.addEventListener('click', markAllNotificationsAsRead);
+
     // Close modal on outside click
     authModal.addEventListener('click', (e) => {
         if (e.target === authModal && currentUser) {
             hideAuthModal();
+        }
+    });
+
+    notificationsModal.addEventListener('click', (e) => {
+        if (e.target === notificationsModal) {
+            hideNotificationsModal();
         }
     });
 }
@@ -251,22 +281,33 @@ function renderPosts(posts) {
 
 function createPostElement(post) {
     const article = document.createElement('article');
-    article.className = 'card post-card fade-in';
+    article.className = `card post-card fade-in${post.is_ghost ? ' ghost-post' : ''}`;
     article.dataset.postId = post.id;
 
-    const avatarInitial = post.username.charAt(0).toUpperCase();
+    const displayName = post.is_ghost ? 'Anonymous' : post.username;
+    const avatarInitial = displayName.charAt(0).toUpperCase();
     const timeAgo = getTimeAgo(post.created_at);
+
+    // Calculate time until expiration for ghost posts
+    let expirationText = '';
+    if (post.is_ghost && post.expires_at) {
+        const expiresIn = getTimeUntilExpiration(post.expires_at);
+        expirationText = `<span class="expiration-badge">⏱️ ${expiresIn}</span>`;
+    }
 
     article.innerHTML = `
         <div class="post-header">
             <div class="avatar">
-                ${post.avatar_url ? `<img src="${post.avatar_url}" alt="${post.username}">` : avatarInitial}
+                ${post.avatar_url && !post.is_ghost ? `<img src="${post.avatar_url}" alt="${displayName}">` : avatarInitial}
             </div>
             <div class="post-author">
-                <div class="post-username">${escapeHtml(post.username)}</div>
-                <div class="post-time">${timeAgo}</div>
+                <div class="post-username">
+                    ${escapeHtml(displayName)}
+                    ${post.is_ghost ? '<span class="ghost-badge">👻 Ghost</span>' : ''}
+                </div>
+                <div class="post-time">${timeAgo} ${expirationText}</div>
             </div>
-            ${currentUser && currentUser.id === post.user_id ? `
+            ${currentUser && currentUser.id === post.user_id && !post.is_ghost ? `
                 <button class="btn btn-ghost btn-icon delete-post-btn" data-post-id="${post.id}">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -274,7 +315,7 @@ function createPostElement(post) {
                 </button>
             ` : ''}
         </div>
-        <div class="post-content">${escapeHtml(post.content)}</div>
+        <div class="post-content">${formatPostContent(escapeHtml(post.content))}</div>
         ${post.image_url ? `<img src="${post.image_url}" alt="Post image" class="post-image">` : ''}
         <div class="post-actions">
             <div class="post-action like-btn ${post.liked_by_user ? 'liked' : ''}" data-post-id="${post.id}">
@@ -330,11 +371,21 @@ async function handleCreatePost() {
             imageUrl = await uploadImage(selectedImage);
         }
 
+        // Get ghost mode settings
+        const ghostToggle = document.getElementById('ghostModeToggle');
+        const isGhost = ghostToggle ? ghostToggle.checked : false;
+        const expiresInHours = isGhost ? parseInt(document.getElementById('expirationTime').value) : null;
+
         const response = await fetch(`${API_BASE_URL}/posts.php?action=create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ content, image_url: imageUrl })
+            body: JSON.stringify({
+                content,
+                image_url: imageUrl,
+                is_ghost: isGhost,
+                expires_in_hours: expiresInHours
+            })
         });
 
         const data = await response.json();
@@ -344,6 +395,10 @@ async function handleCreatePost() {
             postContent.value = '';
             removeImage();
             updateCharCounter();
+
+            // Reset ghost mode
+            document.getElementById('ghostModeToggle').checked = false;
+            document.getElementById('expirationTime').classList.add('hidden');
 
             // Add new post to top of timeline
             const newPostElement = createPostElement(data.post);
@@ -522,6 +577,7 @@ function showAuthenticatedUI() {
     logoutBtn.classList.remove('hidden');
     userInfo.classList.remove('hidden');
     postComposer.classList.remove('hidden');
+    notificationsBtn.classList.remove('hidden');
     usernameDisplay.textContent = `@${currentUser.username}`;
 }
 
@@ -530,6 +586,8 @@ function showUnauthenticatedUI() {
     logoutBtn.classList.add('hidden');
     userInfo.classList.add('hidden');
     postComposer.classList.add('hidden');
+    notificationsBtn.classList.add('hidden');
+    stopNotificationsPolling();
 }
 
 function showError(element, message) {
@@ -610,4 +668,213 @@ function getTimeAgo(timestamp) {
     if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
 
     return postTime.toLocaleDateString();
+}
+
+// Helper function to calculate time until expiration
+function getTimeUntilExpiration(expiresAt) {
+    const now = new Date();
+    const expirationTime = new Date(expiresAt);
+    const seconds = Math.floor((expirationTime - now) / 1000);
+
+    if (seconds < 0) return 'Expired';
+    if (seconds < 60) return `${seconds}s left`;
+    if (seconds < 3600) return `${Math.floor(seconds / 60)}m left`;
+    if (seconds < 86400) return `${Math.floor(seconds / 3600)}h left`;
+
+    return `${Math.floor(seconds / 86400)}d left`;
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+let notificationsPollTimer = null;
+
+async function fetchNotifications() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/notifications.php?action=list`, {
+            credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            renderNotifications(data.notifications);
+        }
+    } catch (error) {
+        console.error('Failed to fetch notifications:', error);
+    }
+}
+
+async function fetchUnreadCount() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/notifications.php?action=unread_count`, {
+            credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            updateNotificationBadge(data.count);
+        }
+    } catch (error) {
+        console.error('Failed to fetch unread count:', error);
+    }
+}
+
+function updateNotificationBadge(count) {
+    if (count > 0) {
+        notificationBadge.textContent = count > 99 ? '99+' : count;
+        notificationBadge.classList.remove('hidden');
+    } else {
+        notificationBadge.classList.add('hidden');
+    }
+}
+
+function renderNotifications(notifications) {
+    notificationsLoading.classList.add('hidden');
+
+    if (notifications.length === 0) {
+        notificationsList.innerHTML = `
+            <div class="empty-notifications">
+                <div class="empty-notifications-icon">🔔</div>
+                <p>No notifications yet</p>
+            </div>
+        `;
+        return;
+    }
+
+    notificationsList.innerHTML = notifications.map(notification => {
+        const icon = getNotificationIcon(notification.type);
+        const actionText = getNotificationActionText(notification.type);
+        const timeAgo = getTimeAgo(notification.created_at);
+        const postPreview = notification.post_content.substring(0, 50) + (notification.post_content.length > 50 ? '...' : '');
+
+        return `
+            <div class="notification-item ${!notification.is_read ? 'unread' : ''}" 
+                 data-notification-id="${notification.id}"
+                 data-post-id="${notification.post_id}">
+                <div class="notification-icon ${notification.type}">
+                    ${icon}
+                </div>
+                <div class="notification-content">
+                    <p class="notification-text">
+                        <strong>${escapeHtml(notification.actor_username)}</strong> ${actionText}
+                    </p>
+                    <p class="notification-post-preview">"${escapeHtml(postPreview)}"</p>
+                    <span class="notification-time">${timeAgo}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    // Add click handlers
+    document.querySelectorAll('.notification-item').forEach(item => {
+        item.addEventListener('click', () => handleNotificationClick(item));
+    });
+}
+
+function getNotificationIcon(type) {
+    switch (type) {
+        case 'like':
+            return '❤️';
+        case 'comment':
+            return '💬';
+        case 'mention':
+            return '@';
+        default:
+            return '🔔';
+    }
+}
+
+function getNotificationActionText(type) {
+    switch (type) {
+        case 'like':
+            return 'liked your post';
+        case 'comment':
+            return 'commented on your post';
+        case 'mention':
+            return 'mentioned you in a post';
+        default:
+            return 'interacted with your post';
+    }
+}
+
+async function handleNotificationClick(item) {
+    const notificationId = item.dataset.notificationId;
+    const postId = item.dataset.postId;
+
+    // Mark as read
+    if (item.classList.contains('unread')) {
+        await markNotificationAsRead(notificationId);
+        item.classList.remove('unread');
+        await fetchUnreadCount();
+    }
+
+    // Close modal
+    hideNotificationsModal();
+
+    // Scroll to post (if on timeline)
+    const postElement = document.querySelector(`[data-post-id="${postId}"]`);
+    if (postElement) {
+        postElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        postElement.style.animation = 'pulse 1s';
+    }
+}
+
+async function markNotificationAsRead(notificationId) {
+    try {
+        await fetch(`${API_BASE_URL}/notifications.php?action=mark_read`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ notification_id: parseInt(notificationId) })
+        });
+    } catch (error) {
+        console.error('Failed to mark notification as read:', error);
+    }
+}
+
+async function markAllNotificationsAsRead() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/notifications.php?action=mark_all_read`, {
+            method: 'POST',
+            credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            // Refresh notifications
+            await fetchNotifications();
+            await fetchUnreadCount();
+        }
+    } catch (error) {
+        console.error('Failed to mark all as read:', error);
+    }
+}
+
+function showNotificationsModal() {
+    notificationsModal.classList.add('active');
+    fetchNotifications();
+}
+
+function hideNotificationsModal() {
+    notificationsModal.classList.remove('active');
+}
+
+function startNotificationsPolling() {
+    // Poll for unread count every 30 seconds
+    notificationsPollTimer = setInterval(fetchUnreadCount, 30000);
+    // Initial fetch
+    fetchUnreadCount();
+}
+
+function stopNotificationsPolling() {
+    if (notificationsPollTimer) {
+        clearInterval(notificationsPollTimer);
+        notificationsPollTimer = null;
+    }
+}
+
+// Format post content to highlight @mentions
+function formatPostContent(content) {
+    return content.replace(/@(\w+)/g, '<span class="mention">@$1</span>');
 }
