@@ -45,9 +45,21 @@ if ($file['error'] !== UPLOAD_ERR_OK) {
 }
 
 // Create uploads directory if it doesn't exist
-$uploadDir = __DIR__ . '/uploads/';
+// Save to /nu/uploads/ (one level up from backend folder)
+$uploadDir = dirname(__DIR__) . '/uploads/';
 if (!file_exists($uploadDir)) {
-    mkdir($uploadDir, 0755, true);
+    if (!mkdir($uploadDir, 0755, true)) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to create uploads directory. Please create it manually via SFTP.']);
+        exit;
+    }
+}
+
+// Check if directory is writable
+if (!is_writable($uploadDir)) {
+    http_response_code(500);
+    echo json_encode(['error' => 'Uploads directory is not writable. Please set permissions to 755 or 777.']);
+    exit;
 }
 
 // Generate unique filename
@@ -58,8 +70,7 @@ $filepath = $uploadDir . $filename;
 // Move uploaded file
 if (move_uploaded_file($file['tmp_name'], $filepath)) {
     // Return the URL to the uploaded file
-    // Use absolute path from root for NUWebSpace
-    $imageUrl = '/Campusbuzz/backend/uploads/' . $filename;
+    $imageUrl = '/nu/uploads/' . $filename;
 
     http_response_code(200);
     echo json_encode([
@@ -68,5 +79,5 @@ if (move_uploaded_file($file['tmp_name'], $filepath)) {
     ]);
 } else {
     http_response_code(500);
-    echo json_encode(['error' => 'Failed to save uploaded file']);
+    echo json_encode(['error' => 'Failed to save uploaded file. Check server permissions.']);
 }

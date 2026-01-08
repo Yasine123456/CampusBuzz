@@ -18,8 +18,12 @@ switch ($method) {
 
         if ($action === 'list') {
             getPosts($pdo);
+        } elseif ($action === 'user_posts') {
+            getUserPosts($pdo);
         } elseif ($action === 'comments') {
             getComments($pdo);
+        } elseif ($action === 'bookmarks') {
+            getBookmarks($pdo);
         } else {
             http_response_code(400);
             echo json_encode(['error' => 'Invalid action']);
@@ -35,6 +39,9 @@ switch ($method) {
                 break;
             case 'like':
                 toggleLike($pdo, $input);
+                break;
+            case 'bookmark':
+                toggleBookmark($pdo, $input);
                 break;
             case 'comment':
                 addComment($pdo, $input);
@@ -133,6 +140,74 @@ function getPosts($pdo)
     } catch (PDOException $e) {
         http_response_code(500);
         echo json_encode(['error' => 'Failed to fetch posts: ' . $e->getMessage()]);
+    }
+}
+
+function getUserPosts($pdo)
+{
+    $userId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : 0;
+
+    if (!$userId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'User ID is required']);
+        return;
+    }
+
+    $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
+    $limit = isset($_GET['limit']) ? (int) $_GET['limit'] : 20;
+    $offset = ($page - 1) * $limit;
+
+    try {
+        // Get user's posts (exclude ghost posts when viewing other users)
+        $stmt = $pdo->prepare("
+            SELECT 
+                p.id, 
+                p.content, 
+                p.image_url, 
+                p.is_ghost,
+                p.expires_at,
+                p.likes_count, 
+                p.comments_count, 
+                p.created_at,
+                u.id as user_id,
+                u.username,
+                u.avatar_url
+            FROM posts p
+            JOIN users u ON p.user_id = u.id
+            WHERE p.user_id = ?
+              AND p.is_ghost = 0
+              AND (p.expires_at IS NULL OR p.expires_at > NOW())
+            ORDER BY p.created_at DESC
+            LIMIT ? OFFSET ?
+        ");
+        $stmt->execute([$userId, $limit, $offset]);
+        $posts = $stmt->fetchAll();
+
+        // Check if current user has liked/bookmarked each post
+        $currentUserId = getCurrentUser();
+        if ($currentUserId) {
+            foreach ($posts as &$post) {
+                $stmt = $pdo->prepare("SELECT id FROM likes WHERE post_id = ? AND user_id = ?");
+                $stmt->execute([$post['id'], $currentUserId]);
+                $post['liked_by_user'] = $stmt->fetch() ? true : false;
+
+                $stmt = $pdo->prepare("SELECT id FROM bookmarks WHERE post_id = ? AND user_id = ?");
+                $stmt->execute([$post['id'], $currentUserId]);
+                $post['bookmarked_by_user'] = $stmt->fetch() ? true : false;
+            }
+        }
+
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'posts' => $posts,
+            'page' => $page,
+            'limit' => $limit
+        ]);
+
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to fetch user posts: ' . $e->getMessage()]);
     }
 }
 
@@ -477,5 +552,112 @@ function addComment($pdo, $input)
     } catch (PDOException $e) {
         http_response_code(500);
         echo json_encode(['error' => 'Failed to add comment: ' . $e->getMessage()]);
+    }
+}
+
+// ============================================
+// BOOKMARK HANDLERS
+// ============================================
+
+function toggleBookmark($pdo, $input)
+{
+    // Check authentication
+    if (!isAuthenticated()) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Authentication required']);
+        return;
+    }
+
+    if (!isset($input['post_id'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Post ID is required']);
+        return;
+    }
+
+    $postId = (int) $input['post_id'];
+    $userId = getCurrentUser();
+
+    try {
+        // Check if already bookmarked
+        $stmt = $pdo->prepare("SELECT id FROM bookmarks WHERE post_id = ? AND user_id = ?");
+        $stmt->execute([$postId, $userId]);
+        $bookmark = $stmt->fetch();
+
+        if ($bookmark) {
+            // Remove bookmark
+            $stmt = $pdo->prepare("DELETE FROM bookmarks WHERE post_id = ? AND user_id = ?");
+            $stmt->execute([$postId, $userId]);
+            $bookmarked = false;
+        } else {
+            // Add bookmark
+            $stmt = $pdo->prepare("INSERT INTO bookmarks (post_id, user_id) VALUES (?, ?)");
+            $stmt->execute([$postId, $userId]);
+            $bookmarked = true;
+        }
+
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'bookmarked' => $bookmarked
+        ]);
+
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to toggle bookmark: ' . $e->getMessage()]);
+    }
+}
+
+function getBookmarks($pdo)
+{
+    // Check authentication
+    if (!isAuthenticated()) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Authentication required']);
+        return;
+    }
+
+    $userId = getCurrentUser();
+
+    try {
+        $stmt = $pdo->prepare("
+            SELECT 
+                p.id, 
+                p.content, 
+                p.image_url, 
+                p.is_ghost,
+                p.likes_count, 
+                p.comments_count, 
+                p.created_at,
+                u.id as user_id,
+                u.username,
+                u.avatar_url,
+                b.created_at as bookmarked_at
+            FROM bookmarks b
+            JOIN posts p ON b.post_id = p.id
+            JOIN users u ON p.user_id = u.id
+            WHERE b.user_id = ?
+            ORDER BY b.created_at DESC
+        ");
+        $stmt->execute([$userId]);
+        $posts = $stmt->fetchAll();
+
+        // Process posts for ghost mode
+        foreach ($posts as &$post) {
+            if ($post['is_ghost']) {
+                $post['username'] = 'Anonymous';
+                $post['avatar_url'] = null;
+            }
+            $post['bookmarked_by_user'] = true;
+        }
+
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'posts' => $posts
+        ]);
+
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to fetch bookmarks: ' . $e->getMessage()]);
     }
 }

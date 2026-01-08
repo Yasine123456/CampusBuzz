@@ -5,6 +5,9 @@
 require_once 'db_connection.php';
 require_once 'auth_helpers.php';
 
+// Start session for authentication
+session_start();
+
 header('Content-Type: application/json');
 
 // Get request method and parse input
@@ -64,6 +67,7 @@ function handleRegister($pdo, $input)
     $username = trim($input['username']);
     $email = trim($input['email']);
     $password = $input['password'];
+    $major = isset($input['major']) ? trim($input['major']) : null;
 
     // Validate username
     if (strlen($username) < 3 || strlen($username) > 50) {
@@ -101,8 +105,8 @@ function handleRegister($pdo, $input)
         }
 
         // Insert new user
-        $stmt = $pdo->prepare("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)");
-        $stmt->execute([$username, $email, $passwordHash]);
+        $stmt = $pdo->prepare("INSERT INTO users (username, email, password_hash, major) VALUES (?, ?, ?, ?)");
+        $stmt->execute([$username, $email, $passwordHash, $major]);
 
         $userId = $pdo->lastInsertId();
 
@@ -116,7 +120,8 @@ function handleRegister($pdo, $input)
             'user' => [
                 'id' => $userId,
                 'username' => $username,
-                'email' => $email
+                'email' => $email,
+                'major' => $major
             ]
         ]);
 

@@ -16,6 +16,16 @@ switch ($method) {
         getUser($pdo);
         break;
 
+    case 'POST':
+        $action = $_GET['action'] ?? '';
+        if ($action === 'follow') {
+            toggleFollow($pdo, $input);
+        } else {
+            http_response_code(400);
+            echo json_encode(['error' => 'Invalid action']);
+        }
+        break;
+
     case 'PUT':
         updateUser($pdo, $input);
         break;
@@ -46,8 +56,10 @@ function getUser($pdo)
                 id,
                 username,
                 email,
+                display_name,
                 bio,
                 avatar_url,
+                major,
                 created_at
             FROM users
             WHERE id = ?
@@ -62,10 +74,31 @@ function getUser($pdo)
         }
 
         // Get user's post count
-        $stmt = $pdo->prepare("SELECT COUNT(*) as post_count FROM posts WHERE user_id = ?");
+        $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM posts WHERE user_id = ?");
         $stmt->execute([$userId]);
         $result = $stmt->fetch();
-        $user['post_count'] = $result['post_count'];
+        $user['post_count'] = (int) $result['count'];
+
+        // Get follower count (people following this user)
+        $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM followers WHERE following_id = ?");
+        $stmt->execute([$userId]);
+        $result = $stmt->fetch();
+        $user['follower_count'] = (int) $result['count'];
+
+        // Get following count (people this user follows)
+        $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM followers WHERE follower_id = ?");
+        $stmt->execute([$userId]);
+        $result = $stmt->fetch();
+        $user['following_count'] = (int) $result['count'];
+
+        // Check if current user follows this user
+        $currentUserId = getCurrentUser();
+        $user['is_following'] = false;
+        if ($currentUserId && $currentUserId != $userId) {
+            $stmt = $pdo->prepare("SELECT id FROM followers WHERE follower_id = ? AND following_id = ?");
+            $stmt->execute([$currentUserId, $userId]);
+            $user['is_following'] = $stmt->fetch() ? true : false;
+        }
 
         http_response_code(200);
         echo json_encode([
@@ -78,6 +111,7 @@ function getUser($pdo)
         echo json_encode(['error' => 'Failed to fetch user: ' . $e->getMessage()]);
     }
 }
+
 
 function updateUser($pdo, $input)
 {
@@ -99,7 +133,7 @@ function updateUser($pdo, $input)
     }
 
     // Build update query dynamically based on provided fields
-    $allowedFields = ['bio', 'avatar_url', 'email'];
+    $allowedFields = ['bio', 'avatar_url', 'display_name'];
     $updates = [];
     $params = [];
 
@@ -148,5 +182,75 @@ function updateUser($pdo, $input)
     } catch (PDOException $e) {
         http_response_code(500);
         echo json_encode(['error' => 'Failed to update user: ' . $e->getMessage()]);
+    }
+}
+
+// ============================================
+// FOLLOW HANDLERS
+// ============================================
+
+function toggleFollow($pdo, $input)
+{
+    // Check authentication
+    if (!isAuthenticated()) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Authentication required']);
+        return;
+    }
+
+    if (!isset($input['user_id'])) {
+        http_response_code(400);
+        echo json_encode(['error' => 'User ID is required']);
+        return;
+    }
+
+    $targetUserId = (int) $input['user_id'];
+    $currentUserId = getCurrentUser();
+
+    // Can't follow yourself
+    if ($targetUserId === $currentUserId) {
+        http_response_code(400);
+        echo json_encode(['error' => 'You cannot follow yourself']);
+        return;
+    }
+
+    try {
+        // Check if already following
+        $stmt = $pdo->prepare("SELECT id FROM followers WHERE follower_id = ? AND following_id = ?");
+        $stmt->execute([$currentUserId, $targetUserId]);
+        $existing = $stmt->fetch();
+
+        if ($existing) {
+            // Unfollow
+            $stmt = $pdo->prepare("DELETE FROM followers WHERE follower_id = ? AND following_id = ?");
+            $stmt->execute([$currentUserId, $targetUserId]);
+            $isFollowing = false;
+        } else {
+            // Follow
+            $stmt = $pdo->prepare("INSERT INTO followers (follower_id, following_id) VALUES (?, ?)");
+            $stmt->execute([$currentUserId, $targetUserId]);
+            $isFollowing = true;
+
+            // Create notification for the followed user
+            require_once 'notifications.php';
+            createNotification($pdo, $targetUserId, 'follow', null, $currentUserId);
+        }
+
+        // Get updated follower count
+        $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM followers WHERE following_id = ?");
+        $stmt->execute([$targetUserId]);
+        $result = $stmt->fetch();
+        $followerCount = (int) $result['count'];
+
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'is_following' => $isFollowing,
+            'follower_count' => $followerCount
+        ]);
+
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Failed to toggle follow: ' . $e->getMessage()]);
     }
 }

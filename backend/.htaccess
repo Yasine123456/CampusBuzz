@@ -5,7 +5,7 @@
 Options -Indexes
 
 # Protect sensitive files (files starting with .)
-<FilesMatch "^\\.">
+<FilesMatch "^\.">
     Require all denied
 </FilesMatch>
 
@@ -17,5 +17,5 @@ AddDefaultCharset UTF-8
     AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
 </IfModule>
 
+# Note: php_value directives removed as they may not be allowed on shared hosting
 # Note: CORS headers are handled in PHP files (db_connection.php)
-# This avoids requiring mod_headers which may not be enabled
