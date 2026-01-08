@@ -43,6 +43,22 @@
                     <div class="user-info hidden" id="userInfo">
                         <span id="usernameDisplay"></span>
                     </div>
+                    <!-- Search Button (visible on mobile) -->
+                    <button class="btn btn-ghost btn-icon hidden" id="searchBtn" title="Search">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </button>
+                    <!-- Messages Button -->
+                    <button class="btn btn-ghost btn-icon hidden" id="messagesBtn" title="Messages"
+                        style="position: relative;">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <span class="notification-badge hidden" id="messagesBadge">0</span>
+                    </button>
                     <!-- Bookmarks Button -->
                     <button class="btn btn-ghost btn-icon hidden" id="bookmarksBtn" title="Bookmarks">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -92,7 +108,8 @@
                                     d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                             </svg>
                         </button>
-                        <input type="file" id="imageInput" accept="image/*" class="hidden">
+                        <input type="file" id="imageInput" accept="image/*" multiple class="hidden">
+                        <span class="image-count-indicator hidden" id="imageCountIndicator">0/4</span>
 
                         <!-- Ghost Mode Toggle -->
                         <label class="ghost-toggle" title="Post anonymously">
@@ -114,17 +131,8 @@
                         <button class="btn btn-primary" id="postBtn">Post</button>
                     </div>
                 </div>
-                <div id="imagePreview" class="hidden" style="margin-top: 1rem; position: relative;">
-                    <img id="previewImg"
-                        style="width: 100%; border-radius: var(--radius-lg); max-height: 200px; object-fit: cover;">
-                    <button class="btn btn-ghost btn-icon" id="removeImageBtn"
-                        style="position: absolute; top: 0.5rem; right: 0.5rem; background: var(--bg-primary);">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </button>
-                </div>
+                <!-- Multi-Image Preview Grid -->
+                <div id="imagePreviewGrid" class="image-preview-grid hidden"></div>
             </div>
 
             <!-- Timeline -->
@@ -299,6 +307,11 @@
                     <span class="follow-text">Follow</span>
                 </button>
 
+                <!-- Message Button (hidden for own profile) -->
+                <button class="btn btn-secondary message-btn hidden" id="profileMessageBtn" data-user-id="">
+                    💬 Message
+                </button>
+
                 <!-- Edit Profile Button (shown for own profile only) -->
                 <button class="btn btn-secondary edit-profile-btn hidden" id="editProfileBtn">
                     ✏️ Edit Profile
@@ -390,7 +403,11 @@
     <div class="modal" id="searchModal">
         <div class="modal-content search-modal-panel">
             <div class="modal-header">
-                <h2 class="modal-title" id="searchModalTitle">Search Results</h2>
+                <div class="search-modal-header-content" style="flex: 1; margin-right: 10px;">
+                    <h2 class="modal-title hidden" id="searchModalTitle">Search Results</h2>
+                    <input type="text" id="modalSearchInput" class="form-input" placeholder="Search users or posts..."
+                        style="width: 100%;">
+                </div>
                 <button class="btn btn-ghost btn-icon" id="closeSearchModalBtn">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -402,6 +419,64 @@
                 <div class="loading-container">
                     <div class="spinner"></div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Messages Modal (Conversations List) -->
+    <div class="modal" id="messagesModal">
+        <div class="modal-content messages-panel">
+            <div class="modal-header">
+                <h2 class="modal-title">Messages</h2>
+                <button class="btn btn-ghost btn-icon" id="closeMessagesBtn">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div id="conversationsList" class="conversations-list">
+                <div class="loading-container" id="conversationsLoading">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Modal (Individual Conversation) -->
+    <div class="modal" id="chatModal">
+        <div class="modal-content chat-panel">
+            <div class="chat-header">
+                <button class="btn btn-ghost btn-icon" id="chatBackBtn">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                    </svg>
+                </button>
+                <div class="chat-user-info">
+                    <div class="avatar chat-avatar" id="chatAvatar">?</div>
+                    <span class="chat-username" id="chatUsername">@username</span>
+                </div>
+                <button class="btn btn-ghost btn-icon" id="closeChatBtn">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="chat-messages" id="chatMessages">
+                <div class="loading-container" id="chatLoading">
+                    <div class="spinner"></div>
+                </div>
+            </div>
+            <div class="chat-input-container">
+                <input type="text" class="chat-input" id="chatInput" placeholder="Type a message..." maxlength="2000">
+                <button class="btn btn-primary" id="sendMessageBtn">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"
+                        width="20" height="20">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                </button>
             </div>
         </div>
     </div>

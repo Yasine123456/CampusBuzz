@@ -9,7 +9,7 @@ const POLL_INTERVAL = 10000; // Poll for new posts every 10 seconds
 
 // State
 let currentUser = null;
-let selectedImage = null;
+let selectedImages = []; // Changed to array for multiple images (max 4)
 let pollTimer = null;
 
 // DOM Elements
@@ -26,9 +26,7 @@ const postBtn = document.getElementById('postBtn');
 const charCounter = document.getElementById('charCounter');
 const imageUploadBtn = document.getElementById('imageUploadBtn');
 const imageInput = document.getElementById('imageInput');
-const imagePreview = document.getElementById('imagePreview');
-const previewImg = document.getElementById('previewImg');
-const removeImageBtn = document.getElementById('removeImageBtn');
+// Multi-image preview elements are created dynamically
 const postsContainer = document.getElementById('postsContainer');
 const loadingState = document.getElementById('loadingState');
 const emptyState = document.getElementById('emptyState');
@@ -114,9 +112,9 @@ function setupEventListeners() {
     // Post composer
     postContent.addEventListener('input', updateCharCounter);
     postBtn.addEventListener('click', handleCreatePost);
+    // Image upload
     imageUploadBtn.addEventListener('click', () => imageInput.click());
     imageInput.addEventListener('change', handleImageSelect);
-    removeImageBtn.addEventListener('click', removeImage);
 
     // Ghost mode toggle
     const ghostModeToggle = document.getElementById('ghostModeToggle');
@@ -142,6 +140,14 @@ function setupEventListeners() {
             }
         }
     });
+
+    // Search button (for mobile)
+    const searchBtn = document.getElementById('searchBtn');
+    if (searchBtn) {
+        searchBtn.addEventListener('click', () => {
+            showSearchModal('');
+        });
+    }
 
     // Profile
     profileBtn.addEventListener('click', showProfileModal);
@@ -354,7 +360,7 @@ function createPostElement(post) {
             ` : ''}
         </div>
         <div class="post-content">${formatPostContent(escapeHtml(post.content))}</div>
-        ${post.image_url ? `<img src="${post.image_url}" alt="Post image" class="post-image">` : ''}
+        ${renderPostMedia(post.media || (post.image_url ? [{ url: post.image_url, media_type: 'image' }] : []))}
         <div class="post-actions">
             <div class="post-action like-btn ${post.liked_by_user ? 'liked' : ''}" data-post-id="${post.id}">
                 <svg xmlns="http://www.w3.org/2000/svg" fill="${post.liked_by_user ? 'currentColor' : 'none'}" viewBox="0 0 24 24" stroke="currentColor">
@@ -451,10 +457,28 @@ async function handleCreatePost() {
         postBtn.textContent = 'Posting...';
 
         let imageUrl = null;
+        let imageUrls = [];
 
-        // Upload image if selected
-        if (selectedImage) {
-            imageUrl = await uploadImage(selectedImage);
+        // Upload all selected images with delay between each to avoid server overload
+        if (selectedImages.length > 0) {
+            let uploadedCount = 0;
+            for (let i = 0; i < selectedImages.length; i++) {
+                postBtn.textContent = `Uploading ${i + 1}/${selectedImages.length}...`;
+                const url = await uploadImage(selectedImages[i]);
+                if (url) {
+                    imageUrls.push(url);
+                    uploadedCount++;
+                }
+                // Add small delay between uploads to avoid overwhelming the server
+                if (i < selectedImages.length - 1) {
+                    await delay(300);
+                }
+            }
+            // Show warning if some uploads failed
+            if (uploadedCount < selectedImages.length) {
+                console.warn(`Only ${uploadedCount}/${selectedImages.length} images uploaded successfully`);
+            }
+            imageUrl = imageUrls[0] || null; // First image for legacy compatibility
         }
 
         // Get ghost mode settings
@@ -469,6 +493,7 @@ async function handleCreatePost() {
             body: JSON.stringify({
                 content,
                 image_url: imageUrl,
+                image_urls: imageUrls,
                 is_ghost: isGhost,
                 expires_in_hours: expiresInHours
             })
@@ -479,7 +504,7 @@ async function handleCreatePost() {
         if (data.success) {
             // Clear composer
             postContent.value = '';
-            removeImage();
+            removeAllImages();
             updateCharCounter();
 
             // Reset ghost mode
@@ -572,39 +597,88 @@ async function handleDeletePost(postId) {
 // IMAGE UPLOAD
 // ============================================
 
+const MAX_IMAGES = 2;
+const imagePreviewGrid = document.getElementById('imagePreviewGrid');
+const imageCountIndicator = document.getElementById('imageCountIndicator');
+
 function handleImageSelect(e) {
-    const file = e.target.files[0];
+    const files = Array.from(e.target.files);
 
-    if (!file) return;
+    if (!files.length) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-        alert('Please select an image file');
+    // Check max images limit
+    const remainingSlots = MAX_IMAGES - selectedImages.length;
+    if (remainingSlots <= 0) {
+        alert(`Maximum ${MAX_IMAGES} images allowed per post`);
         return;
     }
 
-    // Validate file size (5MB)
-    if (file.size > 5 * 1024 * 1024) {
-        alert('Image is too large. Maximum size is 5MB');
-        return;
+    const filesToAdd = files.slice(0, remainingSlots);
+
+    for (const file of filesToAdd) {
+        // Validate file type
+        if (!file.type.startsWith('image/')) {
+            alert('Please select only image files');
+            continue;
+        }
+
+        // Validate file size (5MB)
+        if (file.size > 5 * 1024 * 1024) {
+            alert(`Image "${file.name}" is too large. Maximum size is 5MB`);
+            continue;
+        }
+
+        selectedImages.push(file);
     }
 
-    selectedImage = file;
+    updateImagePreviews();
 
-    // Show preview
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        previewImg.src = e.target.result;
-        imagePreview.classList.remove('hidden');
-    };
-    reader.readAsDataURL(file);
+    // Reset input so same files can be selected again
+    imageInput.value = '';
 }
 
-function removeImage() {
-    selectedImage = null;
+function updateImagePreviews() {
+    imagePreviewGrid.innerHTML = '';
+
+    if (selectedImages.length === 0) {
+        imagePreviewGrid.classList.add('hidden');
+        imageCountIndicator.classList.add('hidden');
+        return;
+    }
+
+    imagePreviewGrid.classList.remove('hidden');
+    imageCountIndicator.classList.remove('hidden');
+    imageCountIndicator.textContent = `${selectedImages.length}/${MAX_IMAGES}`;
+
+    selectedImages.forEach((file, index) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const previewItem = document.createElement('div');
+            previewItem.className = 'image-preview-item';
+            previewItem.innerHTML = `
+                <img src="${e.target.result}" alt="Preview ${index + 1}">
+                <button class="remove-btn" data-index="${index}">&times;</button>
+            `;
+
+            previewItem.querySelector('.remove-btn').addEventListener('click', () => {
+                removeImageAtIndex(index);
+            });
+
+            imagePreviewGrid.appendChild(previewItem);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+function removeImageAtIndex(index) {
+    selectedImages.splice(index, 1);
+    updateImagePreviews();
+}
+
+function removeAllImages() {
+    selectedImages = [];
     imageInput.value = '';
-    imagePreview.classList.add('hidden');
-    previewImg.src = '';
+    updateImagePreviews();
 }
 
 async function uploadImage(file) {
@@ -627,19 +701,26 @@ async function uploadImage(file) {
             data = JSON.parse(text);
         } catch (e) {
             console.error('Invalid JSON response:', text);
-            throw new Error('Server returned invalid response');
+            // Don't show alert for each failed upload, just log it
+            console.warn('Upload failed for file:', file.name, '- Server returned invalid response');
+            return null;
         }
 
         if (data.success) {
             return data.image_url;
         } else {
-            throw new Error(data.error || 'Upload failed');
+            console.warn('Upload failed for file:', file.name, '-', data.error);
+            return null;
         }
     } catch (error) {
         console.error('Image upload error:', error);
-        alert('Failed to upload image: ' + error.message);
         return null;
     }
+}
+
+// Helper to add delay between uploads
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 // ============================================
@@ -677,7 +758,10 @@ function showAuthenticatedUI() {
     searchContainer.classList.remove('hidden');
     profileBtn.classList.remove('hidden');
     bookmarksBtn.classList.remove('hidden');
+    messagesBtn.classList.remove('hidden');
+    document.getElementById('searchBtn')?.classList.remove('hidden');
     usernameDisplay.textContent = `@${currentUser.username}`;
+    startMessagesPolling();
 }
 
 function showUnauthenticatedUI() {
@@ -689,7 +773,10 @@ function showUnauthenticatedUI() {
     searchContainer.classList.add('hidden');
     profileBtn.classList.add('hidden');
     bookmarksBtn.classList.add('hidden');
+    messagesBtn.classList.add('hidden');
+    document.getElementById('searchBtn')?.classList.add('hidden');
     stopNotificationsPolling();
+    stopMessagesPolling();
 }
 
 function showError(element, message) {
@@ -757,6 +844,51 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+}
+
+// Render media gallery for posts (supports 1-4 images)
+function renderPostMedia(media) {
+    if (!media || media.length === 0) return '';
+
+    const images = media.filter(m => m.media_type === 'image' || !m.media_type);
+    if (images.length === 0) return '';
+
+    // Single image
+    if (images.length === 1) {
+        return `<div class="post-media-grid media-count-1">
+            <img src="${images[0].url}" alt="Post image" class="post-media-item" onclick="openImageViewer('${images[0].url}')">
+        </div>`;
+    }
+
+    // Multiple images (2-4)
+    const count = Math.min(images.length, 4);
+    const gridItems = images.slice(0, 4).map((img, index) =>
+        `<img src="${img.url}" alt="Post image ${index + 1}" class="post-media-item" onclick="openImageViewer('${img.url}')">`
+    ).join('');
+
+    return `<div class="post-media-grid media-count-${count}">
+        ${gridItems}
+    </div>`;
+}
+
+// Open image in fullscreen viewer
+function openImageViewer(imageUrl) {
+    const viewer = document.createElement('div');
+    viewer.className = 'image-viewer-overlay';
+    viewer.innerHTML = `
+        <div class="image-viewer-content">
+            <button class="image-viewer-close">&times;</button>
+            <img src="${imageUrl}" alt="Full size image">
+        </div>
+    `;
+
+    viewer.addEventListener('click', (e) => {
+        if (e.target === viewer || e.target.classList.contains('image-viewer-close')) {
+            viewer.remove();
+        }
+    });
+
+    document.body.appendChild(viewer);
 }
 
 function getTimeAgo(timestamp) {
@@ -995,19 +1127,35 @@ function searchByHashtag(tag) {
     showSearchModal(searchQuery);
 }
 
+const modalSearchInput = document.getElementById('modalSearchInput');
+
 function showSearchModal(query) {
     const searchModal = document.getElementById('searchModal');
     const searchModalTitle = document.getElementById('searchModalTitle');
     const searchModalResults = document.getElementById('searchModalResults');
-
-    // Update title
-    searchModalTitle.textContent = `Search: "${query}"`;
-
-    // Show loading
-    searchModalResults.innerHTML = '<div class="loading-container"><div class="spinner"></div></div>';
+    const modalSearchInput = document.getElementById('modalSearchInput');
 
     // Show modal
     searchModal.classList.add('active');
+
+    // Update inputs
+    if (modalSearchInput) {
+        modalSearchInput.value = query;
+        // Focus input if query is empty (mobile search button click)
+        if (!query) {
+            setTimeout(() => modalSearchInput.focus(), 100);
+        }
+
+        // Add execute search on enter
+        modalSearchInput.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                const newQuery = e.target.value.trim();
+                if (newQuery) {
+                    performSearch(newQuery);
+                }
+            }
+        };
+    }
 
     // Setup close handlers
     document.getElementById('closeSearchModalBtn').onclick = hideSearchModal;
@@ -1015,7 +1163,30 @@ function showSearchModal(query) {
         if (e.target === searchModal) hideSearchModal();
     };
 
-    // Perform search
+    // Only perform search if we have a query
+    if (query) {
+        performSearch(query);
+    } else {
+        searchModalResults.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🔍</div>
+                <p>Type to search tailored content</p>
+            </div>
+        `;
+    }
+}
+
+async function performSearch(query) {
+    const searchModalResults = document.getElementById('searchModalResults');
+    const searchModalTitle = document.getElementById('searchModalTitle');
+
+    // Update title
+    if (searchModalTitle) searchModalTitle.textContent = `Search: "${query}"`;
+
+    // Show loading
+    searchModalResults.innerHTML = '<div class="loading-container"><div class="spinner"></div></div>';
+
+    // Perform search request... (rest of the logic)
     handleSearch(query);
 }
 
@@ -1159,12 +1330,17 @@ async function showUserProfile(userId) {
             // Handle follow button
             const followBtn = document.getElementById('profileFollowBtn');
             const editBtn = document.getElementById('editProfileBtn');
+            const messageBtn = document.getElementById('profileMessageBtn');
 
             if (currentUser && currentUser.id !== userId) {
                 // Show follow button for other users
                 followBtn.classList.remove('hidden');
                 followBtn.dataset.userId = userId;
                 editBtn.classList.add('hidden');
+
+                // Show message button for other users
+                messageBtn.classList.remove('hidden');
+                messageBtn.dataset.userId = userId;
 
                 // Set button state
                 if (user.is_following) {
@@ -1180,10 +1356,12 @@ async function showUserProfile(userId) {
             } else if (currentUser && currentUser.id === userId) {
                 // Show edit button for own profile
                 followBtn.classList.add('hidden');
+                messageBtn.classList.add('hidden');
                 editBtn.classList.remove('hidden');
                 editBtn.onclick = () => showEditProfileModal(user);
             } else {
                 followBtn.classList.add('hidden');
+                messageBtn.classList.add('hidden');
                 editBtn.classList.add('hidden');
             }
 
@@ -1650,5 +1828,382 @@ async function submitComment(postId, inputElement) {
         }
     } catch (error) {
         console.error('Failed to submit comment:', error);
+    }
+}
+
+// ============================================
+// PRIVATE MESSAGES
+// ============================================
+
+// DOM Elements for Messages
+const messagesBtn = document.getElementById('messagesBtn');
+const messagesBadge = document.getElementById('messagesBadge');
+const messagesModal = document.getElementById('messagesModal');
+const closeMessagesBtn = document.getElementById('closeMessagesBtn');
+const conversationsList = document.getElementById('conversationsList');
+const conversationsLoading = document.getElementById('conversationsLoading');
+const chatModal = document.getElementById('chatModal');
+const chatBackBtn = document.getElementById('chatBackBtn');
+const closeChatBtn = document.getElementById('closeChatBtn');
+const chatAvatar = document.getElementById('chatAvatar');
+const chatUsername = document.getElementById('chatUsername');
+const chatMessages = document.getElementById('chatMessages');
+const chatLoading = document.getElementById('chatLoading');
+const chatInput = document.getElementById('chatInput');
+const sendMessageBtn = document.getElementById('sendMessageBtn');
+const profileMessageBtn = document.getElementById('profileMessageBtn');
+
+// Current chat state
+let currentConversationId = null;
+let currentChatUserId = null;
+let messagePollTimer = null;
+
+// Initialize message event listeners
+function initMessagesEventListeners() {
+    if (messagesBtn) {
+        messagesBtn.addEventListener('click', showMessagesModal);
+    }
+    if (closeMessagesBtn) {
+        closeMessagesBtn.addEventListener('click', hideMessagesModal);
+    }
+    if (chatBackBtn) {
+        chatBackBtn.addEventListener('click', () => {
+            hideChatModal();
+            showMessagesModal();
+        });
+    }
+    if (closeChatBtn) {
+        closeChatBtn.addEventListener('click', hideChatModal);
+    }
+    if (sendMessageBtn) {
+        sendMessageBtn.addEventListener('click', handleSendMessage);
+    }
+    if (chatInput) {
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleSendMessage();
+            }
+        });
+    }
+    if (profileMessageBtn) {
+        profileMessageBtn.addEventListener('click', handleProfileMessage);
+    }
+    if (messagesModal) {
+        messagesModal.addEventListener('click', (e) => {
+            if (e.target === messagesModal) {
+                hideMessagesModal();
+            }
+        });
+    }
+    if (chatModal) {
+        chatModal.addEventListener('click', (e) => {
+            if (e.target === chatModal) {
+                hideChatModal();
+            }
+        });
+    }
+}
+
+// Call init when DOM is loaded
+document.addEventListener('DOMContentLoaded', initMessagesEventListeners);
+
+// Fetch unread messages count
+async function fetchMessagesUnreadCount() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/messages.php?action=unread_count`, {
+            credentials: 'include'
+        });
+        const data = await response.json();
+
+        if (data.success) {
+            updateMessagesBadge(data.count);
+        }
+    } catch (error) {
+        console.error('Failed to fetch messages unread count:', error);
+    }
+}
+
+function updateMessagesBadge(count) {
+    if (messagesBadge) {
+        if (count > 0) {
+            messagesBadge.textContent = count > 99 ? '99+' : count;
+            messagesBadge.classList.remove('hidden');
+        } else {
+            messagesBadge.classList.add('hidden');
+        }
+    }
+}
+
+// Start polling for messages
+function startMessagesPolling() {
+    fetchMessagesUnreadCount();
+    messagePollTimer = setInterval(fetchMessagesUnreadCount, 30000);
+}
+
+function stopMessagesPolling() {
+    if (messagePollTimer) {
+        clearInterval(messagePollTimer);
+        messagePollTimer = null;
+    }
+}
+
+// Show messages modal and fetch conversations
+async function showMessagesModal() {
+    messagesModal.classList.add('active');
+    conversationsLoading.classList.remove('hidden');
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/messages.php?action=conversations`, {
+            credentials: 'include'
+        });
+        const data = await response.json();
+
+        conversationsLoading.classList.add('hidden');
+
+        if (data.success && data.conversations.length > 0) {
+            renderConversations(data.conversations);
+        } else {
+            conversationsList.innerHTML = `
+                <div class="empty-conversations">
+                    <div class="empty-icon">💬</div>
+                    <p>No conversations yet</p>
+                    <p style="font-size: 0.875rem; margin-top: 0.5rem;">Start a conversation from someone's profile!</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Failed to load conversations:', error);
+        conversationsLoading.classList.add('hidden');
+        conversationsList.innerHTML = '<div class="empty-conversations">Failed to load conversations</div>';
+    }
+}
+
+function hideMessagesModal() {
+    messagesModal.classList.remove('active');
+}
+
+function renderConversations(conversations) {
+    conversationsList.innerHTML = conversations.map(conv => {
+        const avatarInitial = conv.other_username ? conv.other_username.charAt(0).toUpperCase() : '?';
+        const timeAgo = getTimeAgo(conv.last_message_at);
+        const preview = conv.last_message ? conv.last_message.substring(0, 40) + (conv.last_message.length > 40 ? '...' : '') : 'No messages yet';
+
+        return `
+            <div class="conversation-item ${conv.unread_count > 0 ? 'unread' : ''}" 
+                 data-conversation-id="${conv.id}"
+                 data-user-id="${conv.other_user_id}"
+                 data-username="${escapeHtml(conv.other_username)}"
+                 data-avatar="${conv.other_avatar_url || ''}">
+                <div class="conversation-avatar">
+                    ${conv.other_avatar_url ? `<img src="${conv.other_avatar_url}" alt="${conv.other_username}">` : avatarInitial}
+                </div>
+                <div class="conversation-info">
+                    <div class="conversation-header">
+                        <span class="conversation-username">@${escapeHtml(conv.other_username)}</span>
+                        <span class="conversation-time">${timeAgo}</span>
+                    </div>
+                    <div class="conversation-preview">${escapeHtml(preview)}</div>
+                </div>
+                ${conv.unread_count > 0 ? `<span class="conversation-unread-badge">${conv.unread_count}</span>` : ''}
+            </div>
+        `;
+    }).join('');
+
+    // Add click handlers
+    document.querySelectorAll('.conversation-item').forEach(item => {
+        item.addEventListener('click', () => {
+            openChat(
+                parseInt(item.dataset.conversationId),
+                parseInt(item.dataset.userId),
+                item.dataset.username,
+                item.dataset.avatar
+            );
+        });
+    });
+}
+
+// Open chat with a specific conversation
+async function openChat(conversationId, userId, username, avatarUrl) {
+    currentConversationId = conversationId;
+    currentChatUserId = userId;
+
+    // Update chat header
+    chatUsername.textContent = `@${username}`;
+    if (avatarUrl) {
+        chatAvatar.innerHTML = `<img src="${avatarUrl}" alt="${username}">`;
+    } else {
+        chatAvatar.innerHTML = username.charAt(0).toUpperCase();
+    }
+
+    // Hide messages modal and show chat
+    hideMessagesModal();
+    chatModal.classList.add('active');
+    chatLoading.classList.remove('hidden');
+    chatMessages.innerHTML = '';
+    chatMessages.appendChild(chatLoading);
+
+    // Fetch messages
+    await loadMessages(conversationId);
+
+    // Mark as read
+    await markConversationAsRead(conversationId);
+
+    // Start polling for new messages in this conversation
+    startChatPolling();
+}
+
+async function loadMessages(conversationId) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/messages.php?action=messages&conversation_id=${conversationId}`, {
+            credentials: 'include'
+        });
+        const data = await response.json();
+
+        chatLoading.classList.add('hidden');
+
+        if (data.success) {
+            renderMessages(data.messages);
+            scrollChatToBottom();
+        }
+    } catch (error) {
+        console.error('Failed to load messages:', error);
+        chatLoading.classList.add('hidden');
+    }
+}
+
+function renderMessages(messages) {
+    chatMessages.innerHTML = messages.map(msg => {
+        // Convert to int for proper comparison (API returns string, currentUser.id may be number)
+        const isSent = parseInt(msg.sender_id) === parseInt(currentUser.id);
+        const time = new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        return `
+            <div class="message-bubble ${isSent ? 'sent' : 'received'}">
+                <div class="message-content">${escapeHtml(msg.content)}</div>
+                <div class="message-time">${time}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function scrollChatToBottom() {
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+async function handleSendMessage() {
+    const content = chatInput.value.trim();
+
+    if (!content || !currentConversationId) return;
+
+    try {
+        sendMessageBtn.disabled = true;
+
+        const response = await fetch(`${API_BASE_URL}/messages.php?action=send`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+                conversation_id: currentConversationId,
+                content: content
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            chatInput.value = '';
+
+            // Add message to chat
+            const time = new Date(data.message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            const messageHtml = `
+                <div class="message-bubble sent">
+                    <div class="message-content">${escapeHtml(data.message.content)}</div>
+                    <div class="message-time">${time}</div>
+                </div>
+            `;
+            chatMessages.insertAdjacentHTML('beforeend', messageHtml);
+            scrollChatToBottom();
+        }
+    } catch (error) {
+        console.error('Failed to send message:', error);
+    } finally {
+        sendMessageBtn.disabled = false;
+    }
+}
+
+async function markConversationAsRead(conversationId) {
+    try {
+        await fetch(`${API_BASE_URL}/messages.php?action=mark_read`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ conversation_id: conversationId })
+        });
+        fetchMessagesUnreadCount();
+    } catch (error) {
+        console.error('Failed to mark as read:', error);
+    }
+}
+
+function hideChatModal() {
+    chatModal.classList.remove('active');
+    currentConversationId = null;
+    currentChatUserId = null;
+    stopChatPolling();
+}
+
+// Polling for new messages in current chat
+let chatPollTimer = null;
+
+function startChatPolling() {
+    stopChatPolling();
+    chatPollTimer = setInterval(async () => {
+        if (currentConversationId) {
+            await loadMessages(currentConversationId);
+        }
+    }, 5000);
+}
+
+function stopChatPolling() {
+    if (chatPollTimer) {
+        clearInterval(chatPollTimer);
+        chatPollTimer = null;
+    }
+}
+
+// Handle message button on profile
+async function handleProfileMessage() {
+    const userId = parseInt(profileMessageBtn.dataset.userId);
+
+    if (!userId) return;
+
+    try {
+        profileMessageBtn.disabled = true;
+        profileMessageBtn.textContent = 'Loading...';
+
+        const response = await fetch(`${API_BASE_URL}/messages.php?action=start`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ user_id: userId })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            hideProfileModal();
+            openChat(
+                data.conversation_id,
+                data.other_user.id,
+                data.other_user.username,
+                data.other_user.avatar_url
+            );
+        }
+    } catch (error) {
+        console.error('Failed to start conversation:', error);
+    } finally {
+        profileMessageBtn.disabled = false;
+        profileMessageBtn.textContent = '💬 Message';
     }
 }

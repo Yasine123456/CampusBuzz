@@ -3,6 +3,7 @@
 
 require_once 'db_connection.php';
 require_once 'auth_helpers.php';
+require_once 'media.php';
 
 header('Content-Type: application/json');
 
@@ -99,6 +100,15 @@ function getUser($pdo)
             $stmt->execute([$currentUserId, $userId]);
             $user['is_following'] = $stmt->fetch() ? true : false;
         }
+        
+        // Get avatar from media table (with fallback to avatar_url column)
+        $avatarMedia = getUserAvatarUrl($pdo, $userId);
+        if ($avatarMedia) {
+            $user['avatar_url'] = $avatarMedia;
+        }
+        
+        // Get banner from media table
+        $user['banner_url'] = getUserBannerUrl($pdo, $userId);
 
         http_response_code(200);
         echo json_encode([
@@ -153,7 +163,18 @@ function updateUser($pdo, $input)
     $params[] = $userId;
 
     try {
-        // Update user
+        // Handle avatar_url specially - insert into media table
+        if (isset($input['avatar_url']) && !empty($input['avatar_url'])) {
+            updateUserAvatar($pdo, $userId, $input['avatar_url']);
+        }
+        
+        // Handle banner_url - insert into media table
+        if (isset($input['banner_url']) && !empty($input['banner_url'])) {
+            deleteMediaForEntity($pdo, 'user_banner', $userId);
+            createMedia($pdo, 'user_banner', $userId, $input['banner_url']);
+        }
+        
+        // Update other fields in users table
         $sql = "UPDATE users SET " . implode(', ', $updates) . " WHERE id = ?";
         $stmt = $pdo->prepare($sql);
         $stmt->execute($params);

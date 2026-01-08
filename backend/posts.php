@@ -4,6 +4,7 @@
 require_once 'db_connection.php';
 require_once 'auth_helpers.php';
 require_once 'notifications.php';
+require_once 'media.php';
 
 header('Content-Type: application/json');
 
@@ -81,7 +82,7 @@ function getPosts($pdo)
         $sql = "SELECT 
                     p.id, 
                     p.content, 
-                    p.image_url, 
+                    p.image_url,
                     p.is_ghost,
                     p.expires_at,
                     p.likes_count, 
@@ -110,19 +111,31 @@ function getPosts($pdo)
 
         $posts = $stmt->fetchAll();
 
-        // Process posts for ghost mode
+        // Get post IDs for batch media fetch
+        $postIds = array_column($posts, 'id');
+        $mediaByPost = !empty($postIds) ? getMediaForEntities($pdo, 'post', $postIds) : [];
+
+        // Process posts
+        $currentUserId = getCurrentUser();
         foreach ($posts as &$post) {
+            // Add media array (from media table or fallback to image_url)
+            if (isset($mediaByPost[$post['id']])) {
+                $post['media'] = $mediaByPost[$post['id']];
+            } elseif (!empty($post['image_url'])) {
+                // Fallback for legacy posts with image_url
+                $post['media'] = [['url' => $post['image_url'], 'media_type' => 'image', 'position' => 0]];
+            } else {
+                $post['media'] = [];
+            }
+
             // Hide username for ghost posts
             if ($post['is_ghost']) {
                 $post['username'] = 'Anonymous';
                 $post['avatar_url'] = null;
             }
-        }
 
-        // Check if current user has liked each post
-        $currentUserId = getCurrentUser();
-        if ($currentUserId) {
-            foreach ($posts as &$post) {
+            // Check if current user has liked this post
+            if ($currentUserId) {
                 $stmt = $pdo->prepare("SELECT id FROM likes WHERE post_id = ? AND user_id = ?");
                 $stmt->execute([$post['id'], $currentUserId]);
                 $post['liked_by_user'] = $stmt->fetch() ? true : false;
@@ -183,10 +196,23 @@ function getUserPosts($pdo)
         $stmt->execute([$userId, $limit, $offset]);
         $posts = $stmt->fetchAll();
 
+        // Get post IDs for batch media fetch
+        $postIds = array_column($posts, 'id');
+        $mediaByPost = !empty($postIds) ? getMediaForEntities($pdo, 'post', $postIds) : [];
+
         // Check if current user has liked/bookmarked each post
         $currentUserId = getCurrentUser();
-        if ($currentUserId) {
-            foreach ($posts as &$post) {
+        foreach ($posts as &$post) {
+            // Add media array
+            if (isset($mediaByPost[$post['id']])) {
+                $post['media'] = $mediaByPost[$post['id']];
+            } elseif (!empty($post['image_url'])) {
+                $post['media'] = [['url' => $post['image_url'], 'media_type' => 'image', 'position' => 0]];
+            } else {
+                $post['media'] = [];
+            }
+            
+            if ($currentUserId) {
                 $stmt = $pdo->prepare("SELECT id FROM likes WHERE post_id = ? AND user_id = ?");
                 $stmt->execute([$post['id'], $currentUserId]);
                 $post['liked_by_user'] = $stmt->fetch() ? true : false;
@@ -228,7 +254,18 @@ function createPost($pdo, $input)
     }
 
     $content = trim($input['content']);
-    $imageUrl = isset($input['image_url']) ? trim($input['image_url']) : null;
+    
+    // Support both single image_url (legacy) and multiple image_urls (new)
+    $imageUrls = [];
+    if (isset($input['image_urls']) && is_array($input['image_urls'])) {
+        // New: multiple images (max 4)
+        $imageUrls = array_slice(array_filter($input['image_urls']), 0, 4);
+    } elseif (isset($input['image_url']) && trim($input['image_url']) !== '') {
+        // Legacy: single image
+        $imageUrls = [trim($input['image_url'])];
+    }
+    
+    $imageUrl = !empty($imageUrls) ? $imageUrls[0] : null; // Keep for legacy column
     $userId = getCurrentUser();
 
     // Ghost mode parameters - handle various boolean representations
@@ -266,6 +303,11 @@ function createPost($pdo, $input)
         $stmt->execute([$userId, $content, $imageUrl, $isGhostInt, $expiresAt]);
 
         $postId = $pdo->lastInsertId();
+        
+        // Insert media entries for multiple images
+        if (!empty($imageUrls)) {
+            createMediaBatch($pdo, 'post', $postId, $imageUrls);
+        }
 
         // Fetch the created post with user info
         $stmt = $pdo->prepare("
@@ -287,6 +329,13 @@ function createPost($pdo, $input)
         ");
         $stmt->execute([$postId]);
         $post = $stmt->fetch();
+        
+        // Attach media array to response
+        $post['media'] = getMediaForEntity($pdo, 'post', $postId);
+        if (empty($post['media']) && !empty($imageUrl)) {
+            // Fallback for legacy compatibility
+            $post['media'] = [['url' => $imageUrl, 'media_type' => 'image', 'position' => 0]];
+        }
 
         // Hide username for ghost posts
         if ($post['is_ghost']) {
@@ -641,8 +690,21 @@ function getBookmarks($pdo)
         $stmt->execute([$userId]);
         $posts = $stmt->fetchAll();
 
-        // Process posts for ghost mode
+        // Get post IDs for batch media fetch
+        $postIds = array_column($posts, 'id');
+        $mediaByPost = !empty($postIds) ? getMediaForEntities($pdo, 'post', $postIds) : [];
+
+        // Process posts for ghost mode and add media
         foreach ($posts as &$post) {
+            // Add media array
+            if (isset($mediaByPost[$post['id']])) {
+                $post['media'] = $mediaByPost[$post['id']];
+            } elseif (!empty($post['image_url'])) {
+                $post['media'] = [['url' => $post['image_url'], 'media_type' => 'image', 'position' => 0]];
+            } else {
+                $post['media'] = [];
+            }
+            
             if ($post['is_ghost']) {
                 $post['username'] = 'Anonymous';
                 $post['avatar_url'] = null;
