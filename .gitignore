@@ -1,3 +1,7 @@
+# Node modules
+node_modules/
+dist/
+
 # Database Configuration (contains sensitive credentials)
 # backend/db_connection.php
 # backend/config.php
