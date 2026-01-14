@@ -128,8 +128,8 @@ const Header = ({
                 <Logo>
                     <img
                         src={accent === 'amber'
-                            ? '/assets/icon-amber-removebg-preview.png'
-                            : '/assets/icon-teal-removebg-preview.png'
+                            ? '/nu/assets/icon-amber-removebg-preview.png'
+                            : '/nu/assets/icon-teal-removebg-preview.png'
                         }
                         alt="CampusBuzz"
                     />

@@ -1,20 +1,28 @@
 // API Service for CampusBuzz
 // Centralized API calls to PHP backend
 
-// Determine base URL based on environment
-const getBaseUrl = () => {
+// Determine API base path based on environment
+const getApiPath = () => {
     if (typeof window !== 'undefined') {
-        // In browser - use relative path which will be proxied in dev
-        // or work directly in production
-        return window.location.origin.includes('localhost')
-            ? '' // Vite will proxy /backend/* requests
-            : window.location.origin;
+        const hostname = window.location.hostname;
+
+        // Local development - Vite proxy handles it
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            return '/backend';
+        }
+
+        // nuwebspace deployment - app is at /nu/, so backend is at /nu/backend/
+        if (hostname.includes('nuwebspace')) {
+            return '/nu/backend';
+        }
+
+        // Default fallback - assume backend is at /backend relative to origin
+        return '/backend';
     }
-    return '';
+    return '/backend';
 };
 
-const BASE_URL = getBaseUrl();
-const API_PATH = '/backend';
+const API_PATH = getApiPath();
 
 // Helper to get auth token
 const getToken = () => localStorage.getItem('campusbuzz_token');
@@ -36,7 +44,7 @@ const fetchApi = async (endpoint, options = {}) => {
         headers['Authorization'] = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${BASE_URL}${API_PATH}${endpoint}`, {
+    const response = await fetch(`${API_PATH}${endpoint}`, {
         ...options,
         headers,
     });

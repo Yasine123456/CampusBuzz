@@ -261,7 +261,7 @@ const AuthModal = ({ isOpen, onClose }) => {
             </Form>
 
             <Divider>
-                <OAuthButton href="/auth/microsoft-login.php" $variant="microsoft">
+                <OAuthButton href="/nu/auth/microsoft-login.php" $variant="microsoft">
                     <MicrosoftLogo />
                     Sign in with Microsoft
                 </OAuthButton>
@@ -270,7 +270,7 @@ const AuthModal = ({ isOpen, onClose }) => {
                     Northumbria students: use your @northumbria.ac.uk Microsoft account
                 </OAuthNote>
 
-                <OAuthButton href="/auth/google-login.php" $variant="google">
+                <OAuthButton href="/nu/auth/google-login.php" $variant="google">
                     <GoogleLogo />
                     Sign in with Google
                 </OAuthButton>
