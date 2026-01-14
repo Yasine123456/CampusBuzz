@@ -1,122 +1,120 @@
-# CampusBuzz - NUWebspace Deployment Guide
+# CampusBuzz Deployment Guide for nuwebspace
 
-## Quick Deployment Steps
+## What to Upload
 
-### 1. File Structure on NUWebspace
+You need to upload **TWO** sets of files:
 
-Upload the files to your NUWebspace account with this structure:
+### 1. Frontend (React Build) - Upload to root `/nu/`
 
+Upload the **contents** of the `dist/` folder:
 ```
-public_html/
-├── campusbuzz/              # Create this folder
-    ├── index.html           # From frontend/
-    ├── styles.css           # From frontend/
-    ├── app.js               # From frontend/
-    ├── manifest.json        # From frontend/
-    ├── service-worker.js    # From frontend/
-    ├── assets/              # From frontend/
-    │   ├── icon-192.png
-    │   └── icon-512.png
-    └── backend/             # Create this folder
-        ├── auth.php
-        ├── posts.php
-        ├── users.php
-        ├── upload.php
-        ├── db_connection.php
-        ├── .htaccess
-        └── uploads/         # Create empty folder, set permissions to 755
+dist/
+├── index.html        → Upload to /nu/index.html
+└── assets/
+    ├── index-*.js    → Upload to /nu/assets/
+    ├── icon-*.png    → Upload to /nu/assets/
+    └── manifest-*.json → Upload to /nu/assets/
 ```
 
-### 2. Database is Already Set Up
-
-✅ Your database `w25050742` is already configured in phpMyAdmin  
-✅ Tables are already created (users, posts, likes, comments)  
-✅ Credentials in `db_connection.php` are correct
-
-### 3. Upload Files
-
-**Option A: Using File Manager**
-1. Log into NUWebspace cPanel
-2. Open File Manager
-3. Navigate to `public_html`
-4. Create folder `campusbuzz`
-5. Upload all frontend files to `campusbuzz/`
-6. Create folder `campusbuzz/backend`
-7. Upload all backend files to `campusbuzz/backend/`
-8. Create folder `campusbuzz/backend/uploads` and set permissions to 755
-
-**Option B: Using FTP**
-1. Connect via FTP to your NUWebspace account
-2. Navigate to `public_html`
-3. Upload the folder structure as shown above
-
-### 4. Set Folder Permissions
-
-Make sure the uploads folder is writable:
-- `campusbuzz/backend/uploads/` → **755** permissions
-
-### 5. Access Your App
-
-Your app will be available at:
+**Plus** these static files from your project root:
 ```
-https://nuwebspace.net/~w25050742/campusbuzz/
+/assets/                → Upload entire folder to /nu/assets/
+    ├── icon-192.png
+    ├── icon-512.png
+    ├── icon-amber-removebg-preview.png
+    └── icon-teal-removebg-preview.png
+
+manifest.json           → Upload to /nu/manifest.json
+service-worker.js       → Upload to /nu/service-worker.js
 ```
 
-Or if you have a custom domain:
+### 2. Backend (PHP) - Upload to `/nu/`
+
 ```
-https://yourdomain.com/campusbuzz/
+/backend/               → Upload entire folder to /nu/backend/
+    ├── auth.php
+    ├── config.php        (create from config.example.php with your DB credentials)
+    ├── db_connection.php
+    ├── messages.php
+    ├── notifications.php
+    ├── posts.php
+    ├── search.php
+    ├── upload.php
+    ├── users.php
+    └── ... other PHP files
+
+/auth/                  → Upload entire folder to /nu/auth/
+    ├── microsoft-login.php
+    ├── microsoft-config.php  (create from example with your credentials)
+    ├── google-login.php
+    └── ... other auth files
+
+/uploads/               → Create empty folder at /nu/uploads/
 ```
 
-### 6. Test Everything
+---
 
-1. **Open the URL** in your browser
-2. **Register** a new account
-3. **Create a post**
-4. **Like a post**
-5. **Upload an image**
-6. **Install as PWA** (if using HTTPS)
+## Final Directory Structure on nuwebspace
 
-## Why It Will Work on NUWebspace
+```
+/nu/
+├── index.html              ← React app entry (from dist/)
+├── manifest.json           ← PWA manifest
+├── service-worker.js       ← PWA service worker
+├── assets/
+│   ├── index-BBp0iI3w.js   ← React bundle (from dist/assets/)
+│   ├── manifest-*.json     ← (from dist/assets/)
+│   ├── icon-192.png        ← (from /assets/)
+│   ├── icon-512.png        ← (from /assets/)
+│   ├── icon-amber-*.png    ← (from /assets/)
+│   └── icon-teal-*.png     ← (from /assets/)
+├── backend/                ← PHP API files
+│   ├── auth.php
+│   ├── config.php
+│   ├── db_connection.php
+│   └── ...
+├── auth/                   ← OAuth files
+│   ├── microsoft-login.php
+│   ├── microsoft-config.php
+│   └── ...
+└── uploads/                ← User uploads directory (empty, writable)
+```
 
-✅ **Database Connection**: PHP and MySQL are on the same server  
-✅ **No CORS Issues**: Frontend and backend on same domain  
-✅ **Credentials**: Already configured for `w25050742`  
-✅ **Relative Paths**: App.js now uses relative paths that work anywhere  
+---
 
-## Files Ready for Deployment
+## Quick Upload Steps
 
-All files in `/Users/yassine/Campusbuzz/` are ready to upload:
+1. **Build the project** (already done):
+   ```bash
+   npm run build
+   ```
 
-**Frontend Files** (upload to `campusbuzz/`):
-- index.html
-- styles.css
-- app.js ✅ Updated with relative paths
-- manifest.json
-- service-worker.js
-- assets/icon-192.png
-- assets/icon-512.png
+2. **Upload via CyberDuck/FTP**:
+   - First, upload `dist/index.html` as `/nu/index.html` (overwrite existing)
+   - Upload `dist/assets/*` to `/nu/assets/`
+   - Upload `/assets/*` to `/nu/assets/` (merge with above)
+   - Upload `/manifest.json` and `/service-worker.js` to `/nu/`
+   - Upload `/backend/` folder to `/nu/backend/`
+   - Upload `/auth/` folder to `/nu/auth/`
+   - Make sure `/nu/uploads/` exists and is writable
 
-**Backend Files** (upload to `campusbuzz/backend/`):
-- auth.php
-- posts.php
-- users.php
-- upload.php
-- db_connection.php ✅ Already has your database credentials
-- .htaccess
+3. **Set permissions**:
+   - `/nu/uploads/` needs to be writable (chmod 755 or 777)
 
-## Troubleshooting
+4. **Test**:
+   - Visit your nuwebspace URL
+   - Login should work
+   - Posts should load
+   - Images should display
 
-If you encounter issues after deployment:
+---
 
-1. **Check file permissions**: uploads folder should be 755
-2. **Check .htaccess**: Make sure it uploaded correctly
-3. **Check PHP errors**: Enable error reporting temporarily
-4. **Check database**: Verify tables exist in phpMyAdmin
+## Files NOT to Upload (already in .gitignore)
 
-## Next Steps
-
-1. Upload the files to NUWebspace
-2. Access your app URL
-3. Start using CampusBuzz!
-
-The local testing isn't working because your database is on NUWebspace, not locally. Once deployed, everything will work perfectly! 🎉
+- `node_modules/` - Never upload
+- `src/` - Development source, not needed in production
+- `package.json`, `package-lock.json` - Not needed
+- `vite.config.js`, `eslint.config.js` - Development only
+- `.git/` - Version control
+- `*.pdf` - Assignment documents
+- `config.php` files - Should already be on server with correct credentials
