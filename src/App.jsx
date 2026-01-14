@@ -236,6 +236,7 @@ const AppContent = () => {
         isOpen={showNotificationsModal}
         onClose={() => setShowNotificationsModal(false)}
         onUserClick={handleUserClick}
+        onPostClick={handleCommentClick}
       />
 
       {/* Bookmarks Modal */}

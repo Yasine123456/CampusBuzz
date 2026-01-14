@@ -75,7 +75,8 @@ if (move_uploaded_file($file['tmp_name'], $filepath)) {
     http_response_code(200);
     echo json_encode([
         'success' => true,
-        'image_url' => $imageUrl
+        'url' => $imageUrl,        // For React API
+        'image_url' => $imageUrl   // For backward compatibility
     ]);
 } else {
     http_response_code(500);
