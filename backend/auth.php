@@ -17,7 +17,8 @@ $input = json_decode(file_get_contents('php://input'), true);
 // Route handling
 switch ($method) {
     case 'POST':
-        $action = $_GET['action'] ?? '';
+        // Accept action from query param OR request body
+        $action = $_GET['action'] ?? ($input['action'] ?? '');
 
         switch ($action) {
             case 'register':
@@ -29,9 +30,12 @@ switch ($method) {
             case 'logout':
                 handleLogout();
                 break;
+            case 'verify':
+                handleVerify($pdo, $input);
+                break;
             default:
                 http_response_code(400);
-                echo json_encode(['error' => 'Invalid action']);
+                echo json_encode(['error' => 'Invalid action: ' . $action]);
         }
         break;
 
@@ -39,7 +43,7 @@ switch ($method) {
         $action = $_GET['action'] ?? '';
 
         if ($action === 'verify') {
-            handleVerify();
+            handleVerify($pdo, $input);
         } else {
             http_response_code(400);
             echo json_encode(['error' => 'Invalid action']);
@@ -117,6 +121,7 @@ function handleRegister($pdo, $input)
         http_response_code(201);
         echo json_encode([
             'success' => true,
+            'token' => session_id(), // Use session ID as token
             'user' => [
                 'id' => $userId,
                 'username' => $username,
@@ -172,6 +177,7 @@ function handleLogin($pdo, $input)
         http_response_code(200);
         echo json_encode([
             'success' => true,
+            'token' => session_id(), // Use session ID as token
             'user' => $user
         ]);
 
@@ -190,17 +196,50 @@ function handleLogout()
     echo json_encode(['success' => true]);
 }
 
-function handleVerify()
+function handleVerify($pdo = null, $input = null)
 {
+    // Check if we have a token in the input (from React app)
+    if ($input && isset($input['token'])) {
+        // For now, use session-based auth - token is just the session ID
+        // In a production app, you'd validate a JWT here
+    }
+    
     if (isAuthenticated()) {
+        // Get user details from database
+        if ($pdo && isset($_SESSION['user_id'])) {
+            try {
+                $stmt = $pdo->prepare("SELECT id, username, email, display_name, bio, avatar_url, major FROM users WHERE id = ?");
+                $stmt->execute([$_SESSION['user_id']]);
+                $user = $stmt->fetch();
+                
+                if ($user) {
+                    http_response_code(200);
+                    echo json_encode([
+                        'success' => true,
+                        'authenticated' => true,
+                        'user' => $user
+                    ]);
+                    return;
+                }
+            } catch (PDOException $e) {
+                // Fall through to basic response
+            }
+        }
+        
         http_response_code(200);
         echo json_encode([
+            'success' => true,
             'authenticated' => true,
-            'user_id' => $_SESSION['user_id'],
-            'username' => $_SESSION['username']
+            'user' => [
+                'id' => $_SESSION['user_id'],
+                'username' => $_SESSION['username']
+            ]
         ]);
     } else {
         http_response_code(200);
-        echo json_encode(['authenticated' => false]);
+        echo json_encode([
+            'success' => false,
+            'authenticated' => false
+        ]);
     }
 }
