@@ -14,16 +14,30 @@ $input = json_decode(file_get_contents('php://input'), true);
 // Route handling
 switch ($method) {
     case 'GET':
-        getUser($pdo);
+        $action = $_GET['action'] ?? '';
+        if ($action === 'profile') {
+            getProfile($pdo);
+        } else {
+            // Fallback to old behavior (id param)
+            getUser($pdo);
+        }
         break;
 
     case 'POST':
-        $action = $_GET['action'] ?? '';
-        if ($action === 'follow') {
-            toggleFollow($pdo, $input);
-        } else {
-            http_response_code(400);
-            echo json_encode(['error' => 'Invalid action']);
+        // Accept action from query param OR request body
+        $action = $_GET['action'] ?? ($input['action'] ?? '');
+        
+        switch ($action) {
+            case 'follow':
+            case 'unfollow':
+                toggleFollow($pdo, $input);
+                break;
+            case 'update_profile':
+                updateUser($pdo, $input);
+                break;
+            default:
+                http_response_code(400);
+                echo json_encode(['error' => 'Invalid action: ' . $action]);
         }
         break;
 
@@ -39,6 +53,99 @@ switch ($method) {
 // ============================================
 // USER HANDLERS
 // ============================================
+
+// New function to handle profile requests from React app
+function getProfile($pdo)
+{
+    $userId = isset($_GET['user_id']) ? (int) $_GET['user_id'] : 0;
+    $username = isset($_GET['username']) ? trim($_GET['username']) : '';
+
+    try {
+        // Fetch by username or user_id
+        if ($username) {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    id,
+                    username,
+                    email,
+                    display_name,
+                    bio,
+                    avatar_url,
+                    major,
+                    created_at
+                FROM users
+                WHERE username = ?
+            ");
+            $stmt->execute([$username]);
+        } elseif ($userId) {
+            $stmt = $pdo->prepare("
+                SELECT 
+                    id,
+                    username,
+                    email,
+                    display_name,
+                    bio,
+                    avatar_url,
+                    major,
+                    created_at
+                FROM users
+                WHERE id = ?
+            ");
+            $stmt->execute([$userId]);
+        } else {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'error' => 'User ID or username is required']);
+            return;
+        }
+
+        $user = $stmt->fetch();
+
+        if (!$user) {
+            http_response_code(404);
+            echo json_encode(['success' => false, 'error' => 'User not found']);
+            return;
+        }
+
+        $userId = $user['id'];
+
+        // Get user's post count
+        $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM posts WHERE user_id = ?");
+        $stmt->execute([$userId]);
+        $result = $stmt->fetch();
+        $user['posts_count'] = (int) $result['count'];
+
+        // Get follower count (people following this user)
+        $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM followers WHERE following_id = ?");
+        $stmt->execute([$userId]);
+        $result = $stmt->fetch();
+        $user['followers_count'] = (int) $result['count'];
+
+        // Get following count (people this user follows)
+        $stmt = $pdo->prepare("SELECT COUNT(*) as count FROM followers WHERE follower_id = ?");
+        $stmt->execute([$userId]);
+        $result = $stmt->fetch();
+        $user['following_count'] = (int) $result['count'];
+
+        // Check if current user follows this user
+        $currentUserId = getCurrentUser();
+        $user['is_following'] = false;
+        if ($currentUserId && $currentUserId != $userId) {
+            $stmt = $pdo->prepare("SELECT id FROM followers WHERE follower_id = ? AND following_id = ?");
+            $stmt->execute([$currentUserId, $userId]);
+            $user['is_following'] = $stmt->fetch() ? true : false;
+        }
+
+        http_response_code(200);
+        echo json_encode([
+            'success' => true,
+            'user' => $user
+        ]);
+
+    } catch (PDOException $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'Failed to fetch profile: ' . $e->getMessage()]);
+    }
+}
 
 function getUser($pdo)
 {
