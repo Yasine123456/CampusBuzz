@@ -17,7 +17,7 @@ A Progressive Web Application (PWA) designed for university environments, provid
 
 ### Backend
 - **PHP 7.4+** - Server-side logic
-- **MySQL** - Database
+- **MariaDB** - Database
 - **PDO** - Database abstraction layer
 - **Session-based authentication**
 
@@ -53,13 +53,13 @@ Campusbuzz/
 
 ### Prerequisites
 - PHP 7.4 or higher
-- MySQL 5.7 or higher
+- MariaDB 10.3 or higher
 - Web server (Apache/Nginx) or PHP built-in server
 - Modern web browser
 
 ### Database Setup
 
-1. Create a MySQL database:
+1. Create a MariaDB database:
 ```sql
 CREATE DATABASE campusbuzz;
 ```
@@ -201,7 +201,7 @@ To modify the database schema:
 - Check that credentials are included in fetch requests
 
 ### Database Connection Failed
-- Verify MySQL is running
+- Verify MariaDB is running
 - Check database credentials in `db_connection.php`
 - Ensure database exists and schema is imported
 

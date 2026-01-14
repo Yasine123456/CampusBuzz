@@ -31,3 +31,6 @@ error_log
 # Temporary files
 tmp/
 temp/
+
+# Assignment documents
+*.pdf

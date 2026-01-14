@@ -70,6 +70,13 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function initializeApp() {
+    // Initialize theme and accent preferences
+    initializeTheme();
+    initializeAccent();
+
+    // Initialize weather widget
+    initializeWeather();
+
     // Check if user is already authenticated
     const authenticated = await verifyAuth();
 
@@ -91,10 +98,265 @@ async function initializeApp() {
 }
 
 // ============================================
+// THEME & ACCENT TOGGLE
+// ============================================
+
+function initializeTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const theme = savedTheme || (prefersDark ? 'dark' : 'light');
+
+    if (theme === 'dark') {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        updateThemeIcon(true);
+    }
+}
+
+function initializeAccent() {
+    const savedAccent = localStorage.getItem('accent');
+    if (savedAccent === 'amber') {
+        document.documentElement.setAttribute('data-accent', 'amber');
+    }
+}
+
+function toggleTheme() {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+    if (isDark) {
+        document.documentElement.removeAttribute('data-theme');
+        localStorage.setItem('theme', 'light');
+        updateThemeIcon(false);
+    } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('theme', 'dark');
+        updateThemeIcon(true);
+    }
+}
+
+function updateThemeIcon(isDark) {
+    // Update settings modal toggle if it exists
+    const darkModeToggle = document.getElementById('darkModeToggle');
+    if (darkModeToggle) {
+        darkModeToggle.checked = isDark;
+    }
+}
+
+function toggleAccent() {
+    const isAmber = document.documentElement.getAttribute('data-accent') === 'amber';
+
+    if (isAmber) {
+        document.documentElement.removeAttribute('data-accent');
+        localStorage.setItem('accent', 'teal');
+    } else {
+        document.documentElement.setAttribute('data-accent', 'amber');
+        localStorage.setItem('accent', 'amber');
+    }
+    updateAccentToggle(!isAmber);
+}
+
+function updateAccentToggle(isAmber) {
+    const accentToggle = document.getElementById('accentColorToggle');
+    if (accentToggle) {
+        accentToggle.checked = isAmber;
+    }
+}
+
+// ============================================
+// SETTINGS MODAL
+// ============================================
+
+const settingsModal = document.getElementById('settingsModal');
+const settingsBtn = document.getElementById('settingsBtn');
+const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+const darkModeToggle = document.getElementById('darkModeToggle');
+const accentColorToggle = document.getElementById('accentColorToggle');
+
+function showSettingsModal() {
+    // Sync toggle states with current preferences
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const isAmber = document.documentElement.getAttribute('data-accent') === 'amber';
+
+    if (darkModeToggle) darkModeToggle.checked = isDark;
+    if (accentColorToggle) accentColorToggle.checked = isAmber;
+
+    settingsModal.classList.add('active');
+}
+
+function hideSettingsModal() {
+    settingsModal.classList.remove('active');
+}
+
+// ============================================
+// WEATHER WIDGET
+// ============================================
+
+const weatherWidget = document.getElementById('weatherWidget');
+const weatherIcon = document.getElementById('weatherIcon');
+const weatherTemp = document.getElementById('weatherTemp');
+
+function initializeWeather() {
+    if (!weatherWidget || !weatherIcon || !weatherTemp) {
+        console.warn('Weather widget elements not found');
+        return;
+    }
+
+    // Add loading state
+    weatherWidget.classList.add('loading');
+
+    // Newcastle, UK coordinates (hardcoded)
+    const NEWCASTLE_LAT = 54.9783;
+    const NEWCASTLE_LON = -1.6178;
+
+    fetchWeather(NEWCASTLE_LAT, NEWCASTLE_LON);
+}
+
+async function fetchWeather(lat, lon) {
+    try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&temperature_unit=celsius`;
+        console.log('Fetching weather from:', url);
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            throw new Error(`Weather API error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Weather data:', data);
+
+        if (data.current) {
+            updateWeatherDisplay(data.current);
+        } else {
+            throw new Error('No current weather data');
+        }
+    } catch (error) {
+        console.error('Weather fetch error:', error);
+        showWeatherError('--°');
+    }
+}
+
+function updateWeatherDisplay(current) {
+    const temp = Math.round(current.temperature_2m);
+    const weatherCode = current.weather_code;
+
+    weatherWidget.classList.remove('loading', 'error');
+    weatherTemp.textContent = `${temp}°C`;
+    weatherIcon.innerHTML = getWeatherIconSVG(weatherCode);
+    weatherWidget.title = `${getWeatherDescription(weatherCode)}, ${temp}°C`;
+}
+
+function showWeatherError(text = '--°') {
+    weatherWidget.classList.remove('loading');
+    weatherWidget.classList.add('error');
+    weatherTemp.textContent = text;
+    weatherIcon.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+        </svg>
+    `;
+    weatherWidget.title = 'Weather unavailable';
+}
+
+function getWeatherIconSVG(code) {
+    // WMO Weather codes: https://open-meteo.com/en/docs
+    // 0: Clear sky
+    if (code === 0) {
+        return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>`;
+    }
+    // 1-3: Partly cloudy
+    if (code >= 1 && code <= 3) {
+        return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+        </svg>`;
+    }
+    // 45-48: Fog
+    if (code >= 45 && code <= 48) {
+        return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+        </svg>`;
+    }
+    // 51-67: Rain/Drizzle
+    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) {
+        return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 19v2m4-2v2m4-2v2" />
+        </svg>`;
+    }
+    // 71-77: Snow
+    if (code >= 71 && code <= 77) {
+        return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+            <circle cx="8" cy="20" r="1" fill="currentColor" />
+            <circle cx="12" cy="20" r="1" fill="currentColor" />
+            <circle cx="16" cy="20" r="1" fill="currentColor" />
+        </svg>`;
+    }
+    // 85-86: Snow showers
+    if (code >= 85 && code <= 86) {
+        return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+            <circle cx="8" cy="20" r="1" fill="currentColor" />
+            <circle cx="12" cy="20" r="1" fill="currentColor" />
+            <circle cx="16" cy="20" r="1" fill="currentColor" />
+        </svg>`;
+    }
+    // 95-99: Thunderstorm
+    if (code >= 95) {
+        return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17l-2 4 4-2-2 4" />
+        </svg>`;
+    }
+    // Default: cloud
+    return `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+    </svg>`;
+}
+
+function getWeatherDescription(code) {
+    if (code === 0) return 'Clear sky';
+    if (code >= 1 && code <= 3) return 'Partly cloudy';
+    if (code >= 45 && code <= 48) return 'Foggy';
+    if (code >= 51 && code <= 55) return 'Drizzle';
+    if (code >= 56 && code <= 57) return 'Freezing drizzle';
+    if (code >= 61 && code <= 65) return 'Rain';
+    if (code >= 66 && code <= 67) return 'Freezing rain';
+    if (code >= 71 && code <= 75) return 'Snow';
+    if (code >= 77 && code <= 77) return 'Snow grains';
+    if (code >= 80 && code <= 82) return 'Rain showers';
+    if (code >= 85 && code <= 86) return 'Snow showers';
+    if (code >= 95 && code <= 99) return 'Thunderstorm';
+    return 'Cloudy';
+}
+
+// ============================================
 // EVENT LISTENERS
 // ============================================
 
 function setupEventListeners() {
+    // Settings Modal
+    if (settingsBtn) {
+        settingsBtn.addEventListener('click', showSettingsModal);
+    }
+    if (closeSettingsBtn) {
+        closeSettingsBtn.addEventListener('click', hideSettingsModal);
+    }
+    if (darkModeToggle) {
+        darkModeToggle.addEventListener('change', toggleTheme);
+    }
+    if (accentColorToggle) {
+        accentColorToggle.addEventListener('change', toggleAccent);
+    }
+    if (settingsModal) {
+        settingsModal.addEventListener('click', (e) => {
+            if (e.target === settingsModal) {
+                hideSettingsModal();
+            }
+        });
+    }
+
     // Auth
     loginBtn.addEventListener('click', showAuthModal);
     logoutBtn.addEventListener('click', handleLogout);

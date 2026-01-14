@@ -31,7 +31,22 @@
         <!-- Header -->
         <header class="header">
             <div class="header-content">
-                <div class="logo">CampusBuzz</div>
+                <div class="logo">
+                    <img src="assets/icon-teal-removebg-preview.png" alt="CampusBuzz" class="logo-teal" height="40">
+                    <img src="assets/icon-amber-removebg-preview.png" alt="CampusBuzz" class="logo-amber" height="40">
+                </div>
+
+                <!-- Weather Widget -->
+                <div class="weather-widget" id="weatherWidget" title="Loading weather...">
+                    <div class="weather-icon" id="weatherIcon">
+                        <!-- Default: cloud icon while loading -->
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+                        </svg>
+                    </div>
+                    <span class="weather-temp" id="weatherTemp">...</span>
+                </div>
 
                 <!-- Search Bar -->
                 <div class="search-container hidden" id="searchContainer">
@@ -48,6 +63,15 @@
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </button>
+                    <!-- Settings Button -->
+                    <button class="btn btn-ghost btn-icon" id="settingsBtn" title="Settings">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                         </svg>
                     </button>
                     <!-- Messages Button -->
@@ -477,6 +501,44 @@
                             d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                     </svg>
                 </button>
+            </div>
+        </div>
+    </div>
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal">
+        <div class="modal-content settings-panel">
+            <div class="modal-header">
+                <h2 class="modal-title">Settings</h2>
+                <button class="btn btn-ghost btn-icon" id="closeSettingsBtn">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+            <div class="settings-list">
+                <!-- Dark Mode Toggle -->
+                <div class="settings-item">
+                    <div class="settings-item-info">
+                        <span class="settings-item-label">Dark Mode</span>
+                        <span class="settings-item-description">Switch between light and dark theme</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="darkModeToggle">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <!-- Accent Color Toggle -->
+                <div class="settings-item">
+                    <div class="settings-item-info">
+                        <span class="settings-item-label">Accent Color</span>
+                        <span class="settings-item-description">Teal (off) or Amber (on)</span>
+                    </div>
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="accentColorToggle">
+                        <span class="toggle-slider amber"></span>
+                    </label>
+                </div>
             </div>
         </div>
     </div>
