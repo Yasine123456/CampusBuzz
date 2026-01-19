@@ -5,8 +5,10 @@
 require_once 'db_connection.php';
 require_once 'auth_helpers.php';
 
-// Start session for authentication
-session_start();
+// Start session for authentication (only if not already started)
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 header('Content-Type: application/json');
 
