@@ -1,6 +1,5 @@
 # Database Configuration (contains sensitive credentials)
-# backend/db_connection.php
-# backend/config.php
+backend/db_connection.php
 
 # OAuth Config files (contain secrets)
 auth/config.php
